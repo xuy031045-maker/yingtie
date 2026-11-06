@@ -65,6 +65,7 @@ namespace YingTie
         [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr h,int id,uint modifiers,uint key);
         [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr h,int id);
         readonly NotifyIcon tray;
+        readonly Icon appIcon;
         readonly bool testing;
         bool capturing;
         public bool IsCapturing { get { return capturing; } }
@@ -73,7 +74,9 @@ namespace YingTie
             testing=testMode;
             Text="映贴（后台）"; Name="YingTieBackground"; ShowInTaskbar=false;
             FormBorderStyle=FormBorderStyle.FixedToolWindow; ClientSize=new Size(1,1);
-            tray=new NotifyIcon { Icon=SystemIcons.Application,Text="映贴 · Ctrl+Alt+A 截图",Visible=!testing };
+            appIcon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            if(appIcon==null) appIcon=(Icon)SystemIcons.Application.Clone();
+            tray=new NotifyIcon { Icon=appIcon,Text="映贴 · Ctrl+Alt+A 截图",Visible=!testing };
             var menu=new ContextMenuStrip { Font=Theme.Font(9) };
             menu.Items.Add("截图  Ctrl+Alt+A",null,delegate { Capture(); });
             menu.Items.Add("剪贴板贴图  Ctrl+Alt+V",null,delegate { Paste(); });
@@ -131,7 +134,7 @@ namespace YingTie
         }
         protected override void Dispose(bool disposing)
         {
-            if(disposing) { tray.Visible=false; var menu=tray.ContextMenuStrip; tray.Dispose(); if(menu!=null) menu.Dispose(); }
+            if(disposing) { tray.Visible=false; var menu=tray.ContextMenuStrip; tray.Dispose(); appIcon.Dispose(); if(menu!=null) menu.Dispose(); }
             base.Dispose(disposing);
         }
     }
