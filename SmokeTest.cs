@@ -12,6 +12,49 @@ namespace YingTie
         static void Check(bool ok,string message) { if(!ok) throw new Exception(message); }
         static void Mouse(PinWindow pin,string method,MouseEventArgs args)
         { typeof(PinWindow).GetMethod(method,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(pin,new object[] { args }); }
+        static void PaintCapture(CaptureOverlay overlay,Bitmap target,Rectangle clip)
+        {
+            using(var g=Graphics.FromImage(target))
+            { g.SetClip(clip); typeof(CaptureOverlay).GetMethod("OnPaint",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(overlay,new object[] { new PaintEventArgs(g,clip) }); }
+        }
+        static void CheckCaptureTrail(CaptureOverlay overlay)
+        {
+            Rectangle dirty=Rectangle.Empty;
+            InvalidateEventHandler changed=delegate(object sender,InvalidateEventArgs e) { dirty=dirty.IsEmpty ? e.InvalidRect : Rectangle.Union(dirty,e.InvalidRect); };
+            overlay.Invalidated+=changed;
+            try
+            {
+                using(var incremental=new Bitmap(overlay.Width,overlay.Height))
+                using(var full=new Bitmap(overlay.Width,overlay.Height))
+                {
+                    PaintCapture(overlay,incremental,overlay.ClientRectangle);
+                    var flags=BindingFlags.Instance|BindingFlags.NonPublic;
+                    // Hover movement, selection growing/shrinking across its anchor,
+                    // and a tiny cancelled selection must all match a fresh frame.
+                    for(int phase=0;phase<3;phase++)
+                    foreach(var p in new[] { new Point(260,240),new Point(480,170),new Point(90,410),new Point(939,520),new Point(50,40),new Point(430,270) })
+                    {
+                        dirty=Rectangle.Empty;
+                        if(phase==1 && p==new Point(260,240)) typeof(CaptureOverlay).GetMethod("OnMouseDown",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.Left,1,420,260,0) });
+                        if(phase==2 && p==new Point(260,240)) typeof(CaptureOverlay).GetMethod("OnMouseUp",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.Left,1,421,261,0) });
+                        typeof(CaptureOverlay).GetMethod("OnMouseMove",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.None,0,p.X,p.Y,0) });
+                        Check(!dirty.IsEmpty,"Pointer motion must invalidate its visuals");
+                        PaintCapture(overlay,incremental,Rectangle.Intersect(dirty,overlay.ClientRectangle));
+                        PaintCapture(overlay,full,overlay.ClientRectangle);
+                        var a=incremental.LockBits(overlay.ClientRectangle,ImageLockMode.ReadOnly,PixelFormat.Format32bppArgb);
+                        var b=full.LockBits(overlay.ClientRectangle,ImageLockMode.ReadOnly,PixelFormat.Format32bppArgb);
+                        try
+                        {
+                            var left=new byte[a.Stride*a.Height]; var right=new byte[b.Stride*b.Height];
+                            System.Runtime.InteropServices.Marshal.Copy(a.Scan0,left,0,left.Length); System.Runtime.InteropServices.Marshal.Copy(b.Scan0,right,0,right.Length);
+                            for(int i=0;i<left.Length;i++) if(left[i]!=right[i]) throw new Exception("Capture repaint left stale pixels near "+(i/4%a.Width)+","+(i/a.Stride)+" after pointer "+p);
+                        }
+                        finally { incremental.UnlockBits(a); full.UnlockBits(b); }
+                    }
+                }
+            }
+            finally { overlay.Invalidated-=changed; }
+        }
         public static int Run()
         {
             string output=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"verification-minimal"); Directory.CreateDirectory(output);
@@ -110,6 +153,7 @@ namespace YingTie
                     using(var overlay=new CaptureOverlay(source,new Rectangle(100,100,960,540)))
                     {
                         overlay.Show(); Application.DoEvents();
+                        CheckCaptureTrail(overlay);
                         var flags=BindingFlags.Instance|BindingFlags.NonPublic;
                         typeof(CaptureOverlay).GetMethod("OnMouseDown",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.Left,1,100,80,0) });
                         typeof(CaptureOverlay).GetMethod("OnMouseMove",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.Left,0,680,360,0) });
@@ -129,7 +173,7 @@ namespace YingTie
                         Check(overlay.SelectedScreenBounds==new Rectangle(200,180,580,280),"Selection must map to screen coordinates");
                     }
                 }
-                File.WriteAllText(Path.Combine(output,"result.txt"),"PASS: frameless pin; default compact toolbar; drag; colored rectangle/ellipse/arrow via mouse events; original-size annotated export; drawing does not move pin; annotation undo restores pixels; optional tool row expand/collapse; transparency; double-click close without autosave; screenshot dimensions; capture overlay mask; original-pixel crop; screen coordinate mapping.\r\nPointer actions were tested through event handlers. Clipboard roundtrip, save dialog, live hotkeys, mixed-DPI monitors and physical hover remain unverified.\r\n"+DateTime.Now.ToString("o"));
+                File.WriteAllText(Path.Combine(output,"result.txt"),"PASS: incremental capture paint matches fresh frames across hover, drag direction changes, edge movement and tiny cancelled selection; frameless pin; compact toolbar; colored annotations; original-size export; undo; transparency; double-click close; original-pixel crop and screen coordinates.\r\nPointer actions were tested through event handlers. Clipboard roundtrip, save dialog, live hotkeys, mixed-DPI monitors and physical hover remain unverified.\r\n"+DateTime.Now.ToString("o"));
                 return 0;
             }
             catch(Exception e) { File.WriteAllText(Path.Combine(output,"result.txt"),"FAIL\r\n"+e); return 1; }

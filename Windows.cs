@@ -81,19 +81,13 @@ namespace YingTie
         }
         void InvalidateChange(Rectangle oldSelection,Rectangle oldBadge)
         {
-            var next=Selection;
-            using(var dirty=new Region(oldSelection))
-            {
-                dirty.Xor(next);
-                foreach(var r in new[] { oldSelection,next })
-                {
-                    dirty.Union(new Rectangle(r.Left-2,r.Top-2,r.Width+5,5));
-                    dirty.Union(new Rectangle(r.Left-2,r.Bottom-2,r.Width+5,5));
-                    dirty.Union(new Rectangle(r.Left-2,r.Top-2,5,r.Height+5));
-                    dirty.Union(new Rectangle(r.Right-2,r.Top-2,5,r.Height+5));
-                }
-                dirty.Union(oldBadge); dirty.Union(BadgeBounds); Invalidate(dirty);
-            }
+            // Repaint a complete bounded area, including antialiased pixels outside
+            // badge/selection edges. A fragmented XOR region left rounded edges
+            // and overlapping translucent pixels dependent on the previous frame.
+            var dirty=Rectangle.Union(oldBadge,BadgeBounds);
+            if(dragging) dirty=Rectangle.Union(dirty,Rectangle.Union(oldSelection,Selection));
+            dirty.Inflate(3,3);
+            Invalidate(Rectangle.Intersect(dirty,ClientRectangle));
         }
         protected override void OnMouseDown(MouseEventArgs e)
         {
