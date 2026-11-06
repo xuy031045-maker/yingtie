@@ -128,7 +128,7 @@ namespace YingTie
                 }
                 catch(Exception e) { Theme.Error(null,e); }
                 finally { capturing=false; }
-                if(chosen!=null) Pin(chosen,position);
+                if(chosen!=null) { Theme.Copy(null,chosen); Pin(chosen,position); }
             };
             timer.Start();
         }
