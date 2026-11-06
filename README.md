@@ -11,3 +11,5 @@
 映贴使用 C# / Windows Forms 独立实现。项目从对本地 Snipaste 程序的静态架构观察获得启发，没有使用其源代码或程序组件。REA 是独立的逆向工程工具；本次静态观察使用本机脚本，未运行 REA 引擎。
 
 源码构建：退出运行中的程序后，在 PowerShell 运行 `./build.ps1`。混合 DPI 多显示器和真实鼠标交互等场景尚未完整实测。
+
+正式构建排除自检代码；需要测试时使用 `./build.ps1 -Test -OutputPath "$env:TEMP\yingtie-check.exe"` 构建独立测试版。

@@ -18,7 +18,9 @@ namespace YingTie
             try { SetProcessDpiAwarenessContext(new IntPtr(-4)); }
             catch { try { SetProcessDpiAwareness(2); } catch { } }
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+#if TESTS
             if(args.Length>0 && args[0]=="--self-test") { Environment.ExitCode=SelfTest.Run(); return; }
+#endif
             bool first;
             using(var gate=new Mutex(true,"Local\\YingTie.Desktop.v1",out first))
             {
@@ -31,7 +33,7 @@ namespace YingTie
     static class Theme
     {
         public static readonly Color Ink=Color.FromArgb(29,48,74),Blue=Color.FromArgb(39,100,218),Line=Color.FromArgb(220,228,239);
-        public static Font Font(float size) { return new Font("Microsoft YaHei UI",size*1.5f,FontStyle.Regular,GraphicsUnit.Pixel); }
+        public static Font Font(float size) { return new Font("Microsoft YaHei UI",(float)Math.Round(size*1.5f),FontStyle.Regular,GraphicsUnit.Pixel); }
         public static Button Button(string text,int width,EventHandler click)
         {
             var b=new Button { Text=text,Width=width,Height=32,FlatStyle=FlatStyle.Flat,Font=Font(9),BackColor=Color.White,ForeColor=Ink,Cursor=Cursors.Hand,UseVisualStyleBackColor=false };

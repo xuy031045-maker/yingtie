@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
+using System.Drawing.Text;
 using System.Windows.Forms;
 
 namespace YingTie
@@ -10,6 +10,9 @@ namespace YingTie
     sealed class CaptureOverlay : Form
     {
         readonly Bitmap screen;
+        readonly Bitmap dimmed;
+        readonly Font badgeFont=new Font("Microsoft YaHei UI",16,FontStyle.Regular,GraphicsUnit.Pixel);
+        readonly StringFormat badgeFormat=new StringFormat(StringFormat.GenericTypographic) { FormatFlags=StringFormatFlags.NoWrap };
         Point start, current;
         bool dragging;
         public Bitmap Result;
@@ -27,41 +30,83 @@ namespace YingTie
             screen=frozen; AutoScaleMode=AutoScaleMode.None; FormBorderStyle=FormBorderStyle.None;
             StartPosition=FormStartPosition.Manual; Bounds=bounds; TopMost=true; ShowInTaskbar=false;
             DoubleBuffered=true; Cursor=Cursors.Cross; KeyPreview=true; Text="映贴 · 选择截图区域";
+            SetStyle(ControlStyles.AllPaintingInWmPaint|ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.Opaque,true);
+            dimmed=new Bitmap(frozen.Width,frozen.Height,PixelFormat.Format32bppRgb);
+            using(var g=Graphics.FromImage(dimmed))
+            using(var shade=new SolidBrush(Color.FromArgb(88,15,25,40))) { g.DrawImageUnscaled(screen,0,0); g.FillRectangle(shade,0,0,dimmed.Width,dimmed.Height); }
         }
-        protected override void OnShown(EventArgs e) { base.OnShown(e); Activate(); Focus(); }
+        protected override void OnShown(EventArgs e) { base.OnShown(e); current=PointToClient(Cursor.Position); Activate(); Focus(); }
         Rectangle Selection { get { return Rectangle.Intersect(Rectangle.FromLTRB(Math.Min(start.X,current.X),Math.Min(start.Y,current.Y),Math.Max(start.X,current.X),Math.Max(start.Y,current.Y)),ClientRectangle); } }
         protected override void OnPaint(PaintEventArgs e)
         {
-            e.Graphics.DrawImageUnscaled(screen,0,0);
-            using(var shade=new SolidBrush(Color.FromArgb(112,12,23,40))) e.Graphics.FillRectangle(shade,ClientRectangle);
+            e.Graphics.CompositingMode=CompositingMode.SourceCopy;
+            e.Graphics.DrawImageUnscaled(dimmed,0,0);
             var rect=Selection;
             if(dragging && rect.Width>0 && rect.Height>0)
             {
-                e.Graphics.DrawImage(screen,rect,rect,GraphicsUnit.Pixel);
-                using(var pen=new Pen(Color.FromArgb(86,167,255),2)) e.Graphics.DrawRectangle(pen,rect);
-                string dimensions=rect.Width+" × "+rect.Height;
-                DrawBadge(e.Graphics, dimensions, new Point(Math.Max(4,rect.Left),Math.Max(4,rect.Top-30)));
+                var repaint=Rectangle.Intersect(rect,e.ClipRectangle);
+                if(repaint.Width>0 && repaint.Height>0) e.Graphics.DrawImage(screen,repaint,repaint,GraphicsUnit.Pixel);
+                using(var pen=new Pen(Color.FromArgb(107,184,255),1)) e.Graphics.DrawRectangle(pen,rect);
             }
-            Point hint=PointToClient(Cursor.Position); hint.Offset(20,22);
-            DrawBadge(e.Graphics, "拖动选择区域   ·   松开直接贴图   ·   Esc 取消", hint);
+            e.Graphics.CompositingMode=CompositingMode.SourceOver;
+            DrawBadge(e.Graphics,BadgeBounds);
         }
-        void DrawBadge(Graphics g,string text,Point at)
+        string BadgeText { get { return dragging ? Selection.Width+" × "+Selection.Height+"    松开贴图" : "拖动截图    Esc 取消"; } }
+        Rectangle BadgeBounds
         {
-            using(var font=Theme.Font(10))
+            get
             {
-                Size size=TextRenderer.MeasureText(text,font); size.Width+=20; size.Height+=12;
-                at.X=Math.Max(0,Math.Min(ClientSize.Width-size.Width,at.X)); at.Y=Math.Max(0,Math.Min(ClientSize.Height-size.Height,at.Y));
-                using(var brush=new SolidBrush(Theme.Ink)) g.FillRectangle(brush,new Rectangle(at,size));
-                TextRenderer.DrawText(g,text,font,new Point(at.X+10,at.Y+6),Color.White);
+                int width=dragging ? 254 : 224;
+                int x=Math.Max(4,Math.Min(ClientSize.Width-width-4,current.X+20));
+                int y=current.Y+26;
+                if(y+42>ClientSize.Height) y=current.Y-54;
+                return new Rectangle(x,Math.Max(4,y),width,42);
+            }
+        }
+        void DrawBadge(Graphics g,Rectangle bounds)
+        {
+            g.SmoothingMode=SmoothingMode.AntiAlias;
+            using(var path=new GraphicsPath())
+            using(var background=new SolidBrush(Color.FromArgb(30,42,59)))
+            {
+                const int radius=12;
+                path.AddArc(bounds.Left,bounds.Top,radius,radius,180,90);
+                path.AddArc(bounds.Right-radius,bounds.Top,radius,radius,270,90);
+                path.AddArc(bounds.Right-radius,bounds.Bottom-radius,radius,radius,0,90);
+                path.AddArc(bounds.Left,bounds.Bottom-radius,radius,radius,90,90); path.CloseFigure();
+                g.FillPath(background,path);
+            }
+            g.TextRenderingHint=TextRenderingHint.ClearTypeGridFit;
+            g.DrawString(BadgeText,badgeFont,Brushes.White,new PointF(bounds.Left+15,bounds.Top+10),badgeFormat);
+        }
+        void InvalidateChange(Rectangle oldSelection,Rectangle oldBadge)
+        {
+            var next=Selection;
+            using(var dirty=new Region(oldSelection))
+            {
+                dirty.Xor(next);
+                foreach(var r in new[] { oldSelection,next })
+                {
+                    dirty.Union(new Rectangle(r.Left-2,r.Top-2,r.Width+5,5));
+                    dirty.Union(new Rectangle(r.Left-2,r.Bottom-2,r.Width+5,5));
+                    dirty.Union(new Rectangle(r.Left-2,r.Top-2,5,r.Height+5));
+                    dirty.Union(new Rectangle(r.Right-2,r.Top-2,5,r.Height+5));
+                }
+                dirty.Union(oldBadge); dirty.Union(BadgeBounds); Invalidate(dirty);
             }
         }
         protected override void OnMouseDown(MouseEventArgs e)
         {
             if(e.Button==MouseButtons.Right) { DialogResult=DialogResult.Cancel; Close(); return; }
             if(e.Button!=MouseButtons.Left) return;
-            start=e.Location; current=start; dragging=true; Capture=true; Invalidate();
+            var oldSelection=Selection; var oldBadge=BadgeBounds;
+            start=e.Location; current=start; dragging=true; Capture=true; InvalidateChange(oldSelection,oldBadge);
         }
-        protected override void OnMouseMove(MouseEventArgs e) { current=e.Location; Invalidate(); }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            if(current==e.Location) return;
+            var oldSelection=Selection; var oldBadge=BadgeBounds; current=e.Location; InvalidateChange(oldSelection,oldBadge);
+        }
         protected override void OnMouseUp(MouseEventArgs e)
         {
             if(!dragging || e.Button!=MouseButtons.Left) return;
@@ -73,6 +118,11 @@ namespace YingTie
         {
             if(keyData==Keys.Escape) { DialogResult=DialogResult.Cancel; Close(); return true; }
             return base.ProcessCmdKey(ref msg,keyData);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if(disposing) { dimmed.Dispose(); badgeFont.Dispose(); badgeFormat.Dispose(); }
+            base.Dispose(disposing);
         }
     }
 

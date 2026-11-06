@@ -99,7 +99,37 @@ namespace YingTie
                 }
                 var desktop=SystemInformation.VirtualScreen;
                 using(var capture=CaptureOverlay.CaptureDesktop(desktop)) Check(capture.Size==desktop.Size,"Desktop capture dimensions mismatch");
-                File.WriteAllText(Path.Combine(output,"result.txt"),"PASS: frameless pin; default compact toolbar; drag; colored rectangle/ellipse/arrow via mouse events; original-size annotated export; drawing does not move pin; annotation undo restores pixels; optional tool row expand/collapse; transparency; double-click close without autosave; screenshot dimensions.\r\nPointer actions were tested through event handlers. Clipboard roundtrip, save dialog, live hotkeys, mixed-DPI monitors and physical hover remain unverified.\r\n"+DateTime.Now.ToString("o"));
+                using(var source=new Bitmap(960,540))
+                {
+                    using(var g=Graphics.FromImage(source))
+                    using(var title=new Font("Microsoft YaHei UI",32,FontStyle.Bold,GraphicsUnit.Pixel))
+                    {
+                        g.Clear(Color.FromArgb(238,244,251)); g.FillRectangle(Brushes.SteelBlue,64,64,720,360);
+                        g.DrawString("映贴 · 框选后直接贴图",title,Brushes.White,100,135);
+                    }
+                    using(var overlay=new CaptureOverlay(source,new Rectangle(100,100,960,540)))
+                    {
+                        overlay.Show(); Application.DoEvents();
+                        var flags=BindingFlags.Instance|BindingFlags.NonPublic;
+                        typeof(CaptureOverlay).GetMethod("OnMouseDown",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.Left,1,100,80,0) });
+                        typeof(CaptureOverlay).GetMethod("OnMouseMove",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.Left,0,680,360,0) });
+                        using(var preview=new Bitmap(overlay.Width,overlay.Height))
+                        {
+                            overlay.DrawToBitmap(preview,new Rectangle(Point.Empty,preview.Size));
+                            Check(preview.GetPixel(200,300).ToArgb()==source.GetPixel(200,300).ToArgb(),"Selected area must remain undimmed");
+                            Check(preview.GetPixel(20,20).ToArgb()!=source.GetPixel(20,20).ToArgb(),"Unselected area must be dimmed");
+                            preview.Save(Path.Combine(output,"capture-preview.png"),ImageFormat.Png);
+                        }
+                        typeof(CaptureOverlay).GetMethod("OnMouseUp",flags).Invoke(overlay,new object[] { new MouseEventArgs(MouseButtons.Left,1,680,360,0) });
+                        using(var result=overlay.Result)
+                        {
+                            Check(result.Size==new Size(580,280),"Crop must preserve selection dimensions");
+                            Check(result.GetPixel(20,30).ToArgb()==source.GetPixel(120,110).ToArgb(),"Crop must use original pixels without overlay or text");
+                        }
+                        Check(overlay.SelectedScreenBounds==new Rectangle(200,180,580,280),"Selection must map to screen coordinates");
+                    }
+                }
+                File.WriteAllText(Path.Combine(output,"result.txt"),"PASS: frameless pin; default compact toolbar; drag; colored rectangle/ellipse/arrow via mouse events; original-size annotated export; drawing does not move pin; annotation undo restores pixels; optional tool row expand/collapse; transparency; double-click close without autosave; screenshot dimensions; capture overlay mask; original-pixel crop; screen coordinate mapping.\r\nPointer actions were tested through event handlers. Clipboard roundtrip, save dialog, live hotkeys, mixed-DPI monitors and physical hover remain unverified.\r\n"+DateTime.Now.ToString("o"));
                 return 0;
             }
             catch(Exception e) { File.WriteAllText(Path.Combine(output,"result.txt"),"FAIL\r\n"+e); return 1; }
