@@ -15,3 +15,5 @@
 源码构建：退出运行中的程序后，在 PowerShell 运行 `./build.ps1`。混合 DPI 多显示器和真实鼠标交互等场景尚未完整实测。
 
 正式构建排除自检代码；需要测试时使用 `./build.ps1 -Test -OutputPath "$env:TEMP\yingtie-check.exe"` 构建独立测试版。
+
+本项目采用 [MIT 开源许可证](LICENSE)，允许使用、修改及分发；分发时保留许可证和版权声明。REA、Snipaste 等外部项目各自适用其自身的许可。
